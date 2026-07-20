@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import type { Registro } from './types';
