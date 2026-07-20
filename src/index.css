@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  /* Cores do sistema — troque os códigos aqui pra mudar a cor em tudo de uma vez */
+  --color-primaria: #3b82f6; /* azul */
+  --color-destaque: #f97316; /* laranja */
+  --color-sucesso: #22c55e;  /* verde */
+  --color-perigo: #ef4444;   /* vermelho */
+}
