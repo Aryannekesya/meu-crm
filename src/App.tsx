@@ -240,7 +240,7 @@ export default function App() {
             registros={registros}
             carregando={carregandoRegistros}
             aoAlterar={carregarRegistros}
-            papel={papel}
+            papel={papel ?? 'equipe'}
           />
         )}
       </main>
