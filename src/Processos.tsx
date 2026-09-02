@@ -110,6 +110,107 @@ function normalizarDocumentos(valor: any): 'Não se aplica' | 'Enviado' | 'Pende
   return 'Não se aplica';
 }
 
+function anoDe(data: string): string {
+  return data && data.length >= 4 ? data.slice(0, 4) : 'Sem data';
+}
+
+function ordenarAnos(chaves: string[]): string[] {
+  return chaves.sort((a, b) => {
+    if (a === 'Sem data') return 1;
+    if (b === 'Sem data') return -1;
+    return a.localeCompare(b);
+  });
+}
+
+function montarAbaDashboard(todosRegistros: Registro[]) {
+  const geral: Record<string, { entregues: number; pendentes: number }> = {};
+  const agendamentos: Record<string, { enviado: number; pendente: number }> = {};
+  const documentacao: Record<string, { enviado: number; pendente: number; naoAplica: number }> = {};
+
+  todosRegistros.forEach((r) => {
+    const anoGeral = anoDe(r.dataRecebimento);
+    if (!geral[anoGeral]) geral[anoGeral] = { entregues: 0, pendentes: 0 };
+    const completo = r.statusAgendamento === 'Enviado' && (r.documentos === 'Enviado' || r.documentos === 'Não se aplica');
+    if (completo) geral[anoGeral].entregues++;
+    else geral[anoGeral].pendentes++;
+
+    const anoAgendamento = anoDe(r.dataPericia);
+    if (!agendamentos[anoAgendamento]) agendamentos[anoAgendamento] = { enviado: 0, pendente: 0 };
+    if (r.statusAgendamento === 'Enviado') agendamentos[anoAgendamento].enviado++;
+    else agendamentos[anoAgendamento].pendente++;
+
+    const anoDocumentacao = anoDe(r.dataDocumentos || r.dataRecebimento);
+    if (!documentacao[anoDocumentacao]) documentacao[anoDocumentacao] = { enviado: 0, pendente: 0, naoAplica: 0 };
+    if (r.documentos === 'Enviado') documentacao[anoDocumentacao].enviado++;
+    else if (r.documentos === 'Pendente') documentacao[anoDocumentacao].pendente++;
+    else documentacao[anoDocumentacao].naoAplica++;
+  });
+
+  const linhas: any[][] = [];
+  const merges: XLSX.Range[] = [];
+
+  function titulo(texto: string, colunas: number) {
+    const linha = linhas.length;
+    linhas.push([texto]);
+    merges.push({ s: { r: linha, c: 0 }, e: { r: linha, c: colunas - 1 } });
+  }
+
+  titulo('DASHBOARD — VISÃO GERAL DOS PROCESSOS', 5);
+  linhas.push([`Gerado em ${new Date().toLocaleDateString('pt-BR')}`]);
+  linhas.push([]);
+
+  titulo('RESUMO GERAL (status consolidado por ano de recebimento)', 4);
+  linhas.push(['Ano', 'Casos Entregues', 'Casos Pendentes', 'Total']);
+  let totalEntregues = 0;
+  let totalPendentesGeral = 0;
+  ordenarAnos(Object.keys(geral)).forEach((ano) => {
+    const { entregues, pendentes } = geral[ano];
+    totalEntregues += entregues;
+    totalPendentesGeral += pendentes;
+    linhas.push([ano, entregues, pendentes, entregues + pendentes]);
+  });
+  linhas.push(['TOTAL', totalEntregues, totalPendentesGeral, totalEntregues + totalPendentesGeral]);
+  linhas.push([]);
+
+  titulo('AGENDAMENTOS (por ano da perícia)', 4);
+  linhas.push(['Ano', 'Enviado', 'Pendente', 'Total']);
+  let totalAgendEnviado = 0;
+  let totalAgendPendente = 0;
+  ordenarAnos(Object.keys(agendamentos)).forEach((ano) => {
+    const { enviado, pendente } = agendamentos[ano];
+    totalAgendEnviado += enviado;
+    totalAgendPendente += pendente;
+    linhas.push([ano, enviado, pendente, enviado + pendente]);
+  });
+  linhas.push(['TOTAL', totalAgendEnviado, totalAgendPendente, totalAgendEnviado + totalAgendPendente]);
+  linhas.push([]);
+
+  titulo('DOCUMENTAÇÃO (por ano de entrega)', 5);
+  linhas.push(['Ano', 'Enviado', 'Pendente', 'Não se aplica', 'Total']);
+  let totalDocEnviado = 0;
+  let totalDocPendente = 0;
+  let totalDocNaoAplica = 0;
+  ordenarAnos(Object.keys(documentacao)).forEach((ano) => {
+    const { enviado, pendente, naoAplica } = documentacao[ano];
+    totalDocEnviado += enviado;
+    totalDocPendente += pendente;
+    totalDocNaoAplica += naoAplica;
+    linhas.push([ano, enviado, pendente, naoAplica, enviado + pendente + naoAplica]);
+  });
+  linhas.push([
+    'TOTAL',
+    totalDocEnviado,
+    totalDocPendente,
+    totalDocNaoAplica,
+    totalDocEnviado + totalDocPendente + totalDocNaoAplica,
+  ]);
+
+  const planilha = XLSX.utils.aoa_to_sheet(linhas);
+  planilha['!cols'] = [{ wch: 16 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 10 }];
+  planilha['!merges'] = merges;
+  return planilha;
+}
+
 const inputClasse = 'bg-gray-900 border border-gray-600 rounded w-full p-2 text-gray-100';
 
 function CampoForm({ label, children }: { label: string; children: React.ReactNode }) {
@@ -246,10 +347,13 @@ export default function Processos({ registros, carregando, papel, aoAlterar }: P
       'INSTALAÇÃO/UC': r.instalacaoUC,
       ENDEREÇO: r.endereco,
     }));
-    const planilha = XLSX.utils.json_to_sheet(dados);
+    const planilhaProcessos = XLSX.utils.json_to_sheet(dados);
+    const planilhaDashboard = montarAbaDashboard(registros);
+
     const livro = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(livro, planilha, 'Processos');
-    XLSX.writeFile(livro, 'processos.xlsx');
+    XLSX.utils.book_append_sheet(livro, planilhaDashboard, 'Dashboard');
+    XLSX.utils.book_append_sheet(livro, planilhaProcessos, 'Processos');
+    XLSX.writeFile(livro, `relatorio-crm-${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   async function importarExcel(e: React.ChangeEvent<HTMLInputElement>) {
